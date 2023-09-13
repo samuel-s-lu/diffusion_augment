@@ -1,9 +1,12 @@
 import os
+from os import path as osp
 import sys
 import torch
 import torchvision
 import numpy as np
 from PIL import Image
+from tqdm.auto import tqdm
+from collections import defaultdict
 
 from huggingface_hub import hf_hub_download
 from pytorch_lightning import seed_everything
@@ -22,6 +25,20 @@ from GroundingDINO.groundingdino.util.utils import clean_state_dict, get_phrases
 from GroundingDINO.groundingdino.util.inference import annotate, load_image, predict
 
 from segment_anything import build_sam, build_sam_hq, SamPredictor 
+
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('--caches', type=str, required=True)
+
+'13o,13a,14o,14a'
+
+args = parser.parse_args()
+target_list = [f'cache{s[:len(s)-1]}/augmented_images' if s[-1] == 'a' else \
+               f'cache{s[:len(s)-1]}/rendered_images' \
+               for s in args.caches.split(',')]
+
+print(target_list)
+
 
 
 
@@ -57,7 +74,7 @@ prompts = ["arm", "head", "torso", "leg"]
 mesh_cls = 'person'
 prompt_str =  '. '.join(prompts) + ". "
 
-def segment_image(image_path: str):
+def predict_bbox(image_path: str):
         transformA = torchvision.transforms.Compose([torchvision.transforms.ToPILImage()])
         
         transform = T.Compose(
@@ -108,6 +125,38 @@ def segment_image(image_path: str):
         # t = [Image.fromarray(show_mask(el[0], annotated_frame)) for el in masks.cpu()]
         
         # return masks, phrases, t
-        return phrases, logits, boxes_xyxy
+        return phrases, boxes_xyxy
     
-print(segment_image('./cache11/rendered_images/tr_scan_000/0.png'))
+# print(predict_bbox('./cache11/rendered_images/tr_scan_000/0.png'))
+
+dataset_dir = 'data/MPI-FAUST/training/sampled_scans/'
+cls = 'person'
+labels = sorted(['head','arm','torso','leg'])
+models = [f for f in os.listdir(dataset_dir) if osp.isfile(osp.join(dataset_dir, f)) and '_seg' not in f and 'obj' in f]
+
+for target_path in target_list:
+    all_phrases_to_boxes = []
+    for i,m in tqdm(enumerate(models)):
+        mesh_path = os.path.join(dataset_dir, m)
+        mesh_name = m.split('.')[0]
+        images_dir = os.path.join(target_path, mesh_name)
+        
+        phrases_to_boxes = []
+        for image_path in os.listdir(images_dir):
+            p2b = dict()
+            phrases, boxes = predict_bbox(image_path)
+            for p,b in zip(phrases, boxes):
+                if p in p2b:
+                    xMinNew, yMinNew, xMaxNew, yMaxNew = boxes
+                    xMinOld, yMinOld, xMaxOld, yMaxOld = p2b[p]
+                    p2b[p] = torch.tensor([min(xMinNew,xMinOld), min(yMinNew,yMinOld),
+                                           max(xMaxNew,xMaxOld), max(yMaxNew, yMaxOld)])
+                else:
+                    p2b[p] = b
+            for l in labels:
+                if l not in p2b.keys():
+                    p2b[l] = None
+            phrases_to_boxes.append(p2b)
+        
+        all_phrases_to_boxes.append(phrases_to_boxes)
+    torch.save(all_phrases_to_boxes, osp.join('./saved_bboxes', ''.join([x for x in target_path if x != '/'])))

@@ -153,6 +153,9 @@ def sample_viewpoints(): # 120
         elevations = list((np.arange(start=0, stop=75, step=25)))
     elif args.max_elevation_angle == 60:
         elevations = list((np.arange(start=0, stop=60, step=20)))
+    # 3 different elevations
+    elif args.max_elevation_angle == 30:
+        elevations = list((np.arange(start=0, stop=30, step=15)))
     else:
         raise RuntimeError('Invalid max elevation angle specified')
     
@@ -161,8 +164,10 @@ def sample_viewpoints(): # 120
         elevations.append(-1 * elevations[i])
     elevations = list(set(elevations))
     
-    azimuths = list(np.arange(start=0, stop=360, step=45)) # 8 different azimuths
-    radii = [max(min_radius, max_radius * np.sin(np.deg2rad(90-e))) for e in elevations[:n_pos_elevations]]
+    # azimuths = list(np.arange(start=0, stop=360, step=45)) # 8 different azimuths
+    azimuths = list(np.arange(start=0, stop=360, step=90)) # 4 different azimuths
+    # radii = [max(min_radius, max_radius * np.sin(np.deg2rad(90-e))) for e in elevations[:n_pos_elevations]]
+    radii = [1.5]
     viewpoints_set = defaultdict(list)
 
     viewpoints = {}

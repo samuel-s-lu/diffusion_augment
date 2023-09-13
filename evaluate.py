@@ -102,6 +102,27 @@ def get_seg_mask(image_face_ids, mesh_face_labels):
 
     return np.array(image_face_labels)
 
+
+def get_detection_iou(gt_x1, gt_y1, gt_x2, gt_y2, pred_x1, pred_y1, pred_x2, pred_y2):
+    x_left = max(gt_x1, pred_x1)
+    y_top = max(gt_y1, pred_y1)
+    x_right = min(gt_x2, pred_x2)
+    y_bottom = min(gt_y2, pred_y2)
+    
+    if x_right < x_left or y_bottom < y_top:
+        return 0.0
+    
+    I = (x_right - x_left) * (y_bottom - y_top)
+    
+    gt_area = (gt_x2-gt_x1)*(gt_y2-gt_y1)
+    pred_area = (pred_x2-pred_x1)*(pred_y2-pred_y1)
+    
+    U = float(gt_area+pred_area-I)
+    
+    IoU = I / U
+    assert 0. <= IoU <= 1.
+    return IoU
+
 # Now evaluate the clipseg performance 
 
 # Read the predicted cls for each mesh
@@ -113,7 +134,16 @@ dataDir = osp.join('data/MPI-FAUST/training/sampled_scans/')
 for eval_path in eval_list:
     partsIous = defaultdict(list)
     partsIoUs2D = defaultdict(list)
+    partsIoUsDetection = defaultdict(list)
+    
     all_image_face_idx = torch.load(osp.join('./saved_renders', f'{args.max_elev_angle}.pt'))
+    
+    if eval_path[-2] == 'a':
+        bbox_path = osp.join('./saved_bboxes', f'{eval_path.split("/")[0]}augmented_images')
+    else:
+        bbox_path = osp.join('./saved_bboxes', f'{eval_path.split("/")[0]}rendered_images')
+        
+    all_bboxes = torch.load(bbox_path)
 
     for i, m in tqdm(enumerate(models)):
         if i > 8:
@@ -145,18 +175,30 @@ for eval_path in eval_list:
         gt_face_labels = get_face_labels(gt, mesh, labelDict)
         pred_face_labels = get_face_labels(pred, mesh, labelDict)
         
-        for j in range(120):
+        for j in range(all_image_face_idx.shape[1]):
             image_face_ids = all_image_face_idx[i][j]
             gt_seg = get_seg_mask(image_face_ids, gt_face_labels)
             pred_seg = get_seg_mask(image_face_ids, pred_face_labels)
             
+            bboxes = all_bboxes[i][j]
+            
             for l in gtLabels:
                 l = labelDict[l]
                 partsIoUs2D[l].append(calculate_shape_IoU(pred_seg, gt_seg, l))
-                # gt_upper_left_i, gt_upper_left_j = next((i,j) for i in range(512) for j in range(512) if gt_seg == l)
-                # gt_lower_right_i, gt_lower_right_j = next((i,j) for i in reversed(range(512)) for j in reversed(range(512)) if gt_seg == l)
-                        
-        # else: break
+                try:
+                    gt_min_x, gt_min_y = next((row,col) for row in range(512) for col in range(512) \
+                                              if gt_seg[row][col] == l)
+                    gt_max_x, gt_max_y = next((row,col) for row in reversed(range(512)) for col in reversed(range(512)) \
+                                              if gt_seg[row][col] == l)
+                except StopIteration:
+                    partsIoUsDetection[l].append(0.)
+                    continue
+                
+                if bboxes[l]:
+                    partsIoUsDetection[l].append(get_detection_iou(gt_min_x, gt_min_y, gt_max_x, gt_max_y, *(bboxes[l])))
+                else:
+                    partsIoUsDetection[l].append(0.)
+                    
                 
         
     # calculate 3D mIoU
@@ -176,9 +218,15 @@ for eval_path in eval_list:
         mIoU2D.append(partIoU)
         
     print(f'{eval_path} 2D mIoU = {np.mean(mIoU2D)}\n')
-
-
-# In[ ]:
+    
+    # calculate 2D detection mIoU
+    mIoUDetection = []
+    for k,v in partsIoUsDetection.items():
+        partIoU = np.mean(v)
+        print(f'{k} Detection mIoU: {partIoU}')
+        mIoUDetection.append(partIoU)
+        
+    print(f'{eval_path} Detection mIoU = {np.mean(mIoUDetection)}\n')
 
 
 
