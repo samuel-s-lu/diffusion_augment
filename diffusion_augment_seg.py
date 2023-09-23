@@ -164,8 +164,8 @@ def sample_viewpoints(): # 120
         elevations.append(-1 * elevations[i])
     elevations = list(set(elevations))
     
-    # azimuths = list(np.arange(start=0, stop=360, step=45)) # 8 different azimuths
-    azimuths = list(np.arange(start=0, stop=360, step=90)) # 4 different azimuths
+    azimuths = list(np.arange(start=0, stop=360, step=45)) # 8 different azimuths
+    # azimuths = list(np.arange(start=0, stop=360, step=90)) # 4 different azimuths
     # radii = [max(min_radius, max_radius * np.sin(np.deg2rad(90-e))) for e in elevations[:n_pos_elevations]]
     radii = [1.5]
     viewpoints_set = defaultdict(list)

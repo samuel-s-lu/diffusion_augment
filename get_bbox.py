@@ -113,7 +113,7 @@ def predict_bbox(image_path: str):
         transformed_boxes = sam_predictor.transform.apply_boxes_torch(boxes_xyxy, image_source.shape[:2]).to(device)
         
         if len(transformed_boxes) == 0:
-            return [], [], [[]]
+            return [], [[]]
         
         # masks, _, _ = sam_predictor.predict_torch(
         #     point_coords = None,
@@ -142,12 +142,22 @@ for target_path in target_list:
         images_dir = os.path.join(target_path, mesh_name)
         
         phrases_to_boxes = []
-        for image_path in os.listdir(images_dir):
+        for image_name in os.listdir(images_dir):
             p2b = dict()
-            phrases, boxes = predict_bbox(image_path)
+            try:
+                phrases, boxes = predict_bbox(osp.join(images_dir, image_name))
+            except:
+                print(predict_bbox(osp.join(images_dir, image_name)))
+                print('one')
+                exit()
             for p,b in zip(phrases, boxes):
                 if p in p2b:
-                    xMinNew, yMinNew, xMaxNew, yMaxNew = boxes
+                    try:
+                        xMinNew, yMinNew, xMaxNew, yMaxNew = b
+                    except:
+                        print(b)
+                        print('two')
+                        exit()
                     xMinOld, yMinOld, xMaxOld, yMaxOld = p2b[p]
                     p2b[p] = torch.tensor([min(xMinNew,xMinOld), min(yMinNew,yMinOld),
                                            max(xMaxNew,xMaxOld), max(yMaxNew, yMaxOld)])
@@ -159,4 +169,7 @@ for target_path in target_list:
             phrases_to_boxes.append(p2b)
         
         all_phrases_to_boxes.append(phrases_to_boxes)
-    torch.save(all_phrases_to_boxes, osp.join('./saved_bboxes', ''.join([x for x in target_path if x != '/'])))
+    
+    save_path = osp.join('./saved_bboxes', ''.join([x if x != '/' else '-' for x in target_path]))
+    torch.save(all_phrases_to_boxes, save_path)
+    print(f'Saved bounding boxes to {save_path}')
